@@ -1,38 +1,57 @@
 import pickle 
-import os 
+import os
+import torch  
 from torch.utils.data import Dataset
+import cv2 
 
-class CIFAR(Dataset):
-    def __init__(self, num_classes, root, annotations, is_train, transform=None):
-        self.num_classes = num_classes
+class CIFAR10(Dataset):
+    def __init__(self, meta_filepath, root, imgs_pkl, labels_pkl, is_train, transform=None):
+        self.classes = self._get_classes(meta_filepath)
         self.root = root
-        self.annotations = annotations
+        self.imgs = self.load_pickle(imgs_pkl) 
+        self.labels = self.load_pickle(labels_pkl)
         self.is_train = is_train
         self.transform = transform
 
+    def __getitem__(self, idx):
+        img = self.imgs[idx]
+        img = torch.from_numpy(img)
+        label = self.labels[idx]
+        label = torch.tensor(label)
+
+        if self.transform: 
+            img = self.transform(img)
+        
+        return img, label 
+
+    def __len__(self):
+        return len(self.labels)
+
+    def _get_classes(self, meta_filepath):
+        with open(meta_filepath, 'rb') as info:
+            labels = pickle.load(info, encoding ='bytes')
+
+        return [l.decode() for l in labels[b'label_names']]
+
+    @staticmethod
+    def load_pickle(path):
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+        return data
+
+
+
+class CIFAR100(Dataset):
+    def __init__(self, meta_filepath, root, imgs_pkl, labels_pkl, is_train, transform=None):
+        self.classes = self._get_classes(meta_filepath)
+        self.root = root
+        self.imgs = self.load_pickle(imgs_pkl) 
+        self.labels = self.load_pickle(labels_pkl)
+        self.is_train = is_train
+        self.transform = transform
 
     def __getitem__(self, idx):
         return NotImplementedError
 
     def __len__(self):
-        return len(self.annotations)
-
-def load_pickle(path):
-    with open(path, 'rb') as f:
-        data = pickle.load(f)
-    return data
-
-
-def main():
-    cifar10 = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
-    #cifar100 = "/media/data/CIFAR/cifar-10-python"
-
-    train_imgs = load_pickle(os.path.join(cifar10, 'train/train_imgs.pkl'))
-    train_labels = load_pickle(os.path.join(cifar10, 'train/train_labels.pkl'))
-    print(train_imgs.shape)
-    print(train_labels.shape)
-
-
-
-if __name__ == '__main__':
-    main()
+        return NotImplementedError
