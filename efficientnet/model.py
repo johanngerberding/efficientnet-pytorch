@@ -1,5 +1,10 @@
+from albumentations.augmentations.bbox_utils import calculate_bbox_area
 import torch
 import torch.nn as nn
+import numpy as np 
+
+from functools import reduce
+from operator import __add__
 
 
 configs = {
@@ -24,6 +29,54 @@ configs = {
 
 def get_config(name):
     return configs[name]
+
+"""
+class Conv2dSamePadding(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, height, width, groups, bias=False):
+        super().__init__()
+        self.in_channels = in_channels 
+        self.out_channels = out_channels 
+        self.kernel_size = kernel_size
+        self.stride = stride 
+        self.height = height 
+        self.width = width 
+        self.groups = groups 
+        #self.out_height = np.ceil(float(self.height)/float(stride))
+        #self.out_width = np.ceil(float(self.width)/float(stride))
+        self.padding = self.calculate_padding()
+        self.conv = nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, self.stride, self.padding, groups=self.groups, bias)
+    
+    def forward(self, x):
+        return self.conv(x)
+
+
+    def calculate_padding(self):
+        if (self.height % self.stride == 0):
+            pad_along_height = max(self.kernel_size - self.stride, 0)
+        else:
+            pad_along_height = max(self.kernel_size - (self.height % self.stride), 0)
+        if (self.width % self.stride == 0):
+            pad_along_width = max(self.kernel_size - self.stride, 0)
+        else:
+            pad_along_width = max(self.kernel_size - (self.width % self.stride), 0)
+
+        pad_top = pad_along_height // 2
+        pad_bottom = pad_along_height - pad_top
+        pad_left = pad_along_width // 2
+        pad_right = pad_along_width - pad_left
+
+        return (pad_left, pad_right, pad_top, pad_bottom)
+"""
+
+class Conv2dSamePadding(nn.Conv2d):
+    "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"
+    def __init__(self,*args,**kwargs):
+        super(Conv2dSamePadding, self).__init__(*args, **kwargs)
+        self.zero_pad_2d = nn.ZeroPad2d(reduce(__add__,
+            [(k // 2 + (k - 2 * (k // 2)) - 1, k // 2) for k in self.kernel_size[::-1]]))
+
+    def forward(self, input):
+        return  self._conv_forward(self.zero_pad_2d(input), self.weight, self.bias)
 
 
 class SEBlock(nn.Module):
@@ -66,6 +119,7 @@ class MBConv(nn.Module):
             self.conv = nn.Sequential(nn.Conv2d(middle_dim, middle_dim, self.k, self.s, self.padding, groups=middle_dim, bias=False),
                                       nn.BatchNorm2d(middle_dim),
                                       nn.SiLU(inplace=True),
+                                      #Conv2dSamePadding(middle_dim, self.out_channels, 1, bias=False),
                                       nn.Conv2d(middle_dim, self.out_channels, 1, bias=False),
                                       nn.BatchNorm2d(self.out_channels))
         # MBConv6
@@ -73,7 +127,8 @@ class MBConv(nn.Module):
             self.conv = nn.Sequential(nn.Conv2d(self.in_channels, middle_dim, 1, bias=False),
                                       nn.BatchNorm2d(middle_dim),
                                       nn.SiLU(inplace=True),
-                                      nn.Conv2d(middle_dim, middle_dim, self.k, self.s, padding, groups=middle_dim, bias=False),
+                                      Conv2dSamePadding(middle_dim, middle_dim, self.k, self.s, groups=middle_dim, bias=False),
+                                      #nn.Conv2d(middle_dim, middle_dim, self.k, self.s, padding, groups=middle_dim, bias=False),
                                       nn.BatchNorm2d(middle_dim),
                                       nn.SiLU(inplace=True),
                                       nn.Conv2d(middle_dim, self.out_channels, 1, bias=False),
@@ -84,7 +139,8 @@ class MBConv(nn.Module):
 
     def forward(self, x):
         if self.s == 1 and self.in_channels == self.out_channels:
-            return x + self.se(self.conv(x))
+            x_ = self.se(self.conv(x))
+            return x + x_
         else:
             return self.se(self.conv(x))
 
@@ -100,12 +156,12 @@ class EfficientNet(nn.Module):
         self.out_channels = 1280
         self.stages_config = self.config['stages']
 
-        self.stage1 = nn.Sequential(nn.Conv2d(self.in_channels, 32, 3, stride=2, padding=1),
+        self.stage1 = nn.Sequential(Conv2dSamePadding(self.in_channels, 32, 3, stride=2),
                                     nn.BatchNorm2d(32),
                                     nn.SiLU(inplace=True))
         self.modules = [self._create_stage(params) for params in self.stages_config]
         self.stages = nn.Sequential(*self.modules)
-        self.final = nn.Sequential(nn.Conv2d(320, self.out_channels, 1, padding='same'),
+        self.final = nn.Sequential(Conv2dSamePadding(320, self.out_channels, 1),
                                    nn.BatchNorm2d(self.out_channels),
                                    nn.AdaptiveAvgPool2d(1),
                                    nn.Flatten(),
