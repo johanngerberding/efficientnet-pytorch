@@ -15,6 +15,7 @@ This is my personal implementation of EfficientNet with Pytorch. I tried to buil
 * evaluation script 
 * inference demo notebook
 * some explanation, how does this thing work and what makes it so efficient
+* generic EfficientNet B0-B7 (actually only B0 ready)
 
 # Basic Building Blocks
 

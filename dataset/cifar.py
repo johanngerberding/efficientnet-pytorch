@@ -1,6 +1,6 @@
 import pickle 
 import os
-import torch  
+import torch
 from torch.utils.data import Dataset
 import cv2 
 
@@ -15,12 +15,11 @@ class CIFAR10(Dataset):
 
     def __getitem__(self, idx):
         img = self.imgs[idx]
-        img = torch.from_numpy(img)
         label = self.labels[idx]
         label = torch.tensor(label)
 
         if self.transform: 
-            img = self.transform(img)
+            img = self.transform(image=img)["image"]
         
         return img, label 
 

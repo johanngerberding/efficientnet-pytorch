@@ -30,43 +30,6 @@ configs = {
 def get_config(name):
     return configs[name]
 
-"""
-class Conv2dSamePadding(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, height, width, groups, bias=False):
-        super().__init__()
-        self.in_channels = in_channels 
-        self.out_channels = out_channels 
-        self.kernel_size = kernel_size
-        self.stride = stride 
-        self.height = height 
-        self.width = width 
-        self.groups = groups 
-        #self.out_height = np.ceil(float(self.height)/float(stride))
-        #self.out_width = np.ceil(float(self.width)/float(stride))
-        self.padding = self.calculate_padding()
-        self.conv = nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, self.stride, self.padding, groups=self.groups, bias)
-    
-    def forward(self, x):
-        return self.conv(x)
-
-
-    def calculate_padding(self):
-        if (self.height % self.stride == 0):
-            pad_along_height = max(self.kernel_size - self.stride, 0)
-        else:
-            pad_along_height = max(self.kernel_size - (self.height % self.stride), 0)
-        if (self.width % self.stride == 0):
-            pad_along_width = max(self.kernel_size - self.stride, 0)
-        else:
-            pad_along_width = max(self.kernel_size - (self.width % self.stride), 0)
-
-        pad_top = pad_along_height // 2
-        pad_bottom = pad_along_height - pad_top
-        pad_left = pad_along_width // 2
-        pad_right = pad_along_width - pad_left
-
-        return (pad_left, pad_right, pad_top, pad_bottom)
-"""
 
 class Conv2dSamePadding(nn.Conv2d):
     "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"
