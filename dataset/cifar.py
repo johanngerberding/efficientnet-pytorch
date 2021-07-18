@@ -1,8 +1,6 @@
 import pickle 
-import os
 import torch
 from torch.utils.data import Dataset
-import cv2 
 
 class CIFAR10(Dataset):
     def __init__(self, meta_filepath, root, imgs_pkl, labels_pkl, is_train, transform=None):

@@ -1,11 +1,11 @@
 import os
-from albumentations.augmentations.geometric.resize import Resize
-from scipy.sparse.construct import rand
 import torch 
+import yaml 
 import numpy as np
 import torch.nn as nn 
 from collections import defaultdict
 from tqdm import tqdm
+from datetime import datetime 
 
 from torch.utils.data import Subset, DataLoader
 from sklearn.model_selection import train_test_split
@@ -98,26 +98,44 @@ def validate(val_loader, model, criterion, epoch, device):
 
 def main():
     # training parameters
-    batch_size = 64
+    """
+    batch_size = 128
     learning_rate = 0.01
     momentum = 0.9
     bn_momentum = 0.99
     decay = 0.9
     weight_decay = 0.00001
     num_workers = 4 
-    epochs = 10
+    epochs = 25
+    resume_from = None
+    work_dir = ''
+    save_interval = 0
+    model_name = 'efficientnet-b0'
+    """
+    with open("config.yaml", 'r') as stream:
+        try:
+            cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+    print(cfg)
+
+    now = datetime.now()
+    now_str = now.strftime("%d_%m_%y")
+    
+    if cfg.work_dir == '':
+        work_dir = "experiments/{}".format(now_str)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print("Device: {}".format(device))
 
-    config = get_config('efficientnet-b0')
+    config = get_config(cfg.model_name)
     net = EfficientNet(config=config, num_classes=10)
     net.to(device)
 
-    test_tensor = torch.randn(1,3,64,64)
-    test_tensor = test_tensor.to(device)
-    out = net(test_tensor)
-    
+    #test_tensor = torch.randn(1,3,64,64)
+    #test_tensor = test_tensor.to(device)
+    #out = net(test_tensor)
     #num_params = get_n_params(net)
 
     cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
@@ -154,22 +172,27 @@ def main():
     val_dataset = Subset(dataset, val_indices)
 
     train_dataloader = DataLoader(train_dataset, 
-                                  batch_size=batch_size, 
+                                  batch_size=cfg.train_batch_size, 
                                   shuffle=True, 
-                                  num_workers=num_workers)
+                                  num_workers=cfg.num_workers)
     val_dataloader = DataLoader(val_dataset, 
-                                batch_size=batch_size, 
+                                batch_size=cfg.val_batch_size, 
                                 shuffle=True, 
-                                num_workers=num_workers)
+                                num_workers=cfg.num_workers)
 
     criterion = nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(), lr=cfg.learning_rate)
 
 
-    for epoch in range(1, (epochs+1)):
+    for epoch in range(1, (cfg.epochs+1)):
+
         train(train_dataloader, net, criterion, optimizer, epoch, device)
         validate(val_dataloader, net, criterion, epoch, device)
+        
+        if cfg.save_interval != 0 and epoch % cfg.save_interval == 0:
+            torch.save(net.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))
 
+    torch.save(net.state_dict(), os.path.join(work_dir, 'final_{}.pth'.format(epoch)))
 
 
 if __name__ == '__main__':

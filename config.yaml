@@ -1,0 +1,13 @@
+train_batch_size: 128
+val_batch_size: 64
+learning_rate: 0.01
+momentum: 0.9
+bn_momentum: 0.99
+decay: 0.9
+weight_decay: 0.00001
+num_workers: 4 
+epochs: 25
+resume_from: ""
+work_dir: ""
+save_interval: 10
+model_name: "efficientnet-b0"
