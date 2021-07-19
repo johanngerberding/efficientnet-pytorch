@@ -8,7 +8,7 @@ This is my personal implementation of EfficientNet with Pytorch. I tried to buil
 
 # TODOs
 
-* DataLoader for ImageNet (the smaller Kaggle subset)
+* Dataset & DataLoader for ImageNet (the smaller Kaggle subset), check this out in more detail!
 * training script 
 * utils for models (make all the code a bit more generic and clean)
 * Data Augmentation (albumentations?) 

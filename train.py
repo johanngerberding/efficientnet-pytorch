@@ -133,10 +133,6 @@ def main():
     net = EfficientNet(config=config, num_classes=10)
     net.to(device)
 
-    #test_tensor = torch.randn(1,3,64,64)
-    #test_tensor = test_tensor.to(device)
-    #out = net(test_tensor)
-    #num_params = get_n_params(net)
 
     cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
     meta_path = '/home/johann/dev/efficientnet-pytorch/data/cifar10/cifar-10-batches-py/batches.meta'
