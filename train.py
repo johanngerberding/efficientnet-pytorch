@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from efficientnet.model import EfficientNet
 from efficientnet.utils import get_n_params, get_config
 from dataset.cifar import CIFAR10
+from dataset.imagenet import ImageNet
 
 import albumentations as A 
 from albumentations.pytorch import ToTensorV2
@@ -98,20 +99,6 @@ def validate(val_loader, model, criterion, epoch, device):
 
 def main():
     # training parameters
-    """
-    batch_size = 128
-    learning_rate = 0.01
-    momentum = 0.9
-    bn_momentum = 0.99
-    decay = 0.9
-    weight_decay = 0.00001
-    num_workers = 4 
-    epochs = 25
-    resume_from = None
-    work_dir = ''
-    save_interval = 0
-    model_name = 'efficientnet-b0'
-    """
     with open("config.yaml", 'r') as stream:
         try:
             cfg = yaml.safe_load(stream)
@@ -123,25 +110,30 @@ def main():
     now = datetime.now()
     now_str = now.strftime("%d_%m_%y")
     
-    if cfg.work_dir == '':
+    if cfg['work_dir'] == '':
         work_dir = "experiments/{}".format(now_str)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print("Device: {}".format(device))
 
-    config = get_config(cfg.model_name)
-    net = EfficientNet(config=config, num_classes=10)
+    config = get_config(cfg['model_name'])
+    net = EfficientNet(config=config, num_classes=cfg['num_classes'])
     net.to(device)
 
 
-    cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
-    meta_path = '/home/johann/dev/efficientnet-pytorch/data/cifar10/cifar-10-batches-py/batches.meta'
-    train_imgs_pkl = os.path.join(cifar10_root, 'train/train_imgs.pkl')
-    train_labels_pkl = os.path.join(cifar10_root, 'train/train_labels.pkl')
-    
+    #cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
+    #meta_path = '/home/johann/dev/efficientnet-pytorch/data/cifar10/cifar-10-batches-py/batches.meta'
+    #train_imgs_pkl = os.path.join(cifar10_root, 'train/train_imgs.pkl')
+    #train_labels_pkl = os.path.join(cifar10_root, 'train/train_labels.pkl')
+
+    root = "/media/johann/data/imagenet"
+    root_imgs = os.path.join(root, "ILSVRC", "Data", "CLS-LOC")
+    train_imgs_root = os.path.join(root_imgs, 'train')
+    label_file = os.path.join(root, 'LOC_synset_mapping.txt')
+
     train_transform = A.Compose(
         [
-            A.Resize(64,64),
+            A.Resize(224,224),
             A.HorizontalFlip(p=0.5),
             A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
             A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
@@ -153,14 +145,15 @@ def main():
     )
     test_transform = A.Compose(
         [
-            A.Resize(64,64),
+            A.Resize(224,224),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
     )
 
-    dataset = CIFAR10(meta_path, cifar10_root, train_imgs_pkl, train_labels_pkl, True, train_transform)
-    
+    #dataset = CIFAR10(meta_path, cifar10_root, train_imgs_pkl, train_labels_pkl, True, train_transform)
+    dataset = ImageNet(train_imgs_root, "", label_file, True, train_transform)
+
     indices = np.arange(len(dataset))
     train_indices, val_indices = train_test_split(indices, test_size=0.15, random_state=42)
 
@@ -168,24 +161,24 @@ def main():
     val_dataset = Subset(dataset, val_indices)
 
     train_dataloader = DataLoader(train_dataset, 
-                                  batch_size=cfg.train_batch_size, 
+                                  batch_size=cfg['train_batch_size'], 
                                   shuffle=True, 
-                                  num_workers=cfg.num_workers)
+                                  num_workers=cfg['num_workers'])
     val_dataloader = DataLoader(val_dataset, 
-                                batch_size=cfg.val_batch_size, 
+                                batch_size=cfg['val_batch_size'], 
                                 shuffle=True, 
-                                num_workers=cfg.num_workers)
+                                num_workers=cfg['num_workers'])
 
     criterion = nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=cfg.learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(), lr=cfg['learning_rate'])
 
 
-    for epoch in range(1, (cfg.epochs+1)):
+    for epoch in range(1, (cfg['epochs']+1)):
 
         train(train_dataloader, net, criterion, optimizer, epoch, device)
         validate(val_dataloader, net, criterion, epoch, device)
         
-        if cfg.save_interval != 0 and epoch % cfg.save_interval == 0:
+        if cfg['save_interval'] != 0 and epoch % cfg['save_interval'] == 0:
             torch.save(net.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))
 
     torch.save(net.state_dict(), os.path.join(work_dir, 'final_{}.pth'.format(epoch)))
