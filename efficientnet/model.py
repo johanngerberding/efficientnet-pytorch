@@ -1,4 +1,3 @@
-from albumentations.augmentations.bbox_utils import calculate_bbox_area
 import torch
 import torch.nn as nn
 import numpy as np 
@@ -6,6 +5,7 @@ import numpy as np
 from functools import reduce
 from operator import __add__
 
+from utils import ModelParams
 
 class Conv2dSamePadding(nn.Conv2d):
     "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"
@@ -86,21 +86,21 @@ class MBConv(nn.Module):
 
 
 class EfficientNet(nn.Module):
-    def __init__(self, config, num_classes,  name='efficientnet-b0'):
+    def __init__(self, params):
         super().__init__()
-        self.config = config
-        self.num_classes = num_classes
-        self.dropout = self.config['dropout']
+        self.params = params
+        self.num_classes = self.params.num_classes
+        self.dropout = self.params.dropout
         self.in_channels = 3
         self.out_channels = 1280
-        self.stages_config = self.config['stages']
+        self.stages_config = self.params.stages
 
-        self.stage1 = nn.Sequential(Conv2dSamePadding(self.in_channels, 32, 3, stride=2),
-                                    nn.BatchNorm2d(32),
+        self.stage1 = nn.Sequential(Conv2dSamePadding(self.in_channels, self.stages_config[0][3], 3, stride=2),
+                                    nn.BatchNorm2d(self.stages_config[0][3]),
                                     nn.SiLU(inplace=True))
         self.modules = [self._create_stage(params) for params in self.stages_config]
         self.stages = nn.Sequential(*self.modules)
-        self.final = nn.Sequential(Conv2dSamePadding(320, self.out_channels, 1),
+        self.final = nn.Sequential(Conv2dSamePadding(self.stages_config[-1][4], self.out_channels, 1),
                                    nn.BatchNorm2d(self.out_channels),
                                    nn.AdaptiveAvgPool2d(1),
                                    nn.Flatten(),
@@ -124,3 +124,16 @@ class EfficientNet(nn.Module):
                 modules.append(MBConv(in_channels, in_channels, filter_size, expand_ratio, 1, se_ratio, padding))
 
         return nn.Sequential(*modules)
+
+
+def main():    
+    params = ModelParams('efficientnet-b7')
+    model = EfficientNet(params)
+
+    test_tensor = torch.randn(1,3,600,600)
+    out = model(test_tensor)
+    print(out.size())
+
+
+if __name__ == '__main__':
+    main()
