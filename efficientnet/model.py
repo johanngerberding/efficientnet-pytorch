@@ -5,7 +5,7 @@ import numpy as np
 from functools import reduce
 from operator import __add__
 
-from utils import ModelParams
+from efficientnet.utils import ModelParams
 
 class Conv2dSamePadding(nn.Conv2d):
     "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"

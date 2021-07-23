@@ -124,13 +124,3 @@ def get_n_params(model):
             nn = nn*s
         pp += nn
     return pp
-
-"""
-def main():
-    params = ModelParams('efficientnet-b6')
-    for stage in params.stages:
-        print(stage)
-
-
-if __name__ == '__main__':
-    main()"""

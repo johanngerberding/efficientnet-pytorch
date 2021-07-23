@@ -11,7 +11,7 @@ from torch.utils.data import Subset, DataLoader
 from sklearn.model_selection import train_test_split
 
 from efficientnet.model import EfficientNet
-from efficientnet.utils import get_n_params, get_config
+from efficientnet.utils import get_n_params, get_config, ModelParams
 from dataset.cifar import CIFAR10
 from dataset.imagenet import ImageNet
 
@@ -116,10 +116,11 @@ def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print("Device: {}".format(device))
 
-    config = get_config(cfg['model_name'])
-    net = EfficientNet(config=config, num_classes=cfg['num_classes'])
-    net.to(device)
+    model_params = ModelParams(cfg['model_name'], 
+                               num_classes=cfg['num_classes'])
 
+    net = EfficientNet(model_params)
+    net.to(device)
 
     #cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
     #meta_path = '/home/johann/dev/efficientnet-pytorch/data/cifar10/cifar-10-batches-py/batches.meta'
@@ -133,7 +134,7 @@ def main():
 
     train_transform = A.Compose(
         [
-            A.Resize(224,224),
+            A.Resize(model_params.img_size, model_params.img_size),
             A.HorizontalFlip(p=0.5),
             A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
             A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
@@ -145,7 +146,7 @@ def main():
     )
     test_transform = A.Compose(
         [
-            A.Resize(224,224),
+            A.Resize(model_params.img_size,model_params.img_size),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
@@ -170,13 +171,26 @@ def main():
                                 num_workers=cfg['num_workers'])
 
     criterion = nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=cfg['learning_rate'])
 
+    # here I don't know exactly what the authors mean by "optimizer with decay 0.9"
+    # do they mean the smoothing constant alpha?
+    optimizer = torch.optim.RMSprop(net.parameters(), 
+                                    lr=cfg['learning_rate'], 
+                                    momentum=cfg['momentum'], 
+                                    weight_decay=cfg['weight_decay'])
+
+    # here I am a bit confused with the paper which say the lr 
+    # "decays by 0.97 every 2.4 epochs"
+    # I use 0.97 as gamma and step size of 2
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
+                                                step_size=cfg['scheduler_step_size'], 
+                                                gamma=cfg['scheduler_gamma'])
 
     for epoch in range(1, (cfg['epochs']+1)):
 
         train(train_dataloader, net, criterion, optimizer, epoch, device)
         validate(val_dataloader, net, criterion, epoch, device)
+        scheduler.step()
         
         if cfg['save_interval'] != 0 and epoch % cfg['save_interval'] == 0:
             torch.save(net.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))

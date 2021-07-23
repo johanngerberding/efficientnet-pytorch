@@ -1,9 +1,8 @@
 num_classes: 1000
 train_batch_size: 32
 val_batch_size: 16
-learning_rate: 0.01
+learning_rate: 0.256
 momentum: 0.9
-bn_momentum: 0.99
 decay: 0.9
 weight_decay: 0.00001
 num_workers: 4 
@@ -12,3 +11,5 @@ resume_from: ""
 work_dir: ""
 save_interval: 1
 model_name: "efficientnet-b0"
+scheduler_step_size: 2
+scheduler_gamma: 0.97
