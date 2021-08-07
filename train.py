@@ -12,7 +12,7 @@ from torch.utils.data import Subset, DataLoader
 from sklearn.model_selection import train_test_split
 
 from efficientnet.model import EfficientNet
-from efficientnet.utils import get_config, ModelParams
+from efficientnet.utils import ModelParams
 from dataset.imagenet import ImageNet
 
 import albumentations as A 
@@ -29,7 +29,6 @@ class MetricMonitor:
 
     def update(self, metric_name, val):
         metric = self.metrics[metric_name]
-
         metric["val"] += val
         metric["count"] += 1
         metric["avg"] = metric["val"] / metric["count"]
@@ -56,25 +55,34 @@ def calc_acc(output, labels):
     return acc
 
 
-def train(train_loader, model, criterion, optimizer, epoch, device):
+def train(train_loader, model, criterion, optimizer, epoch, device, scaler):
     metric_monitor = MetricMonitor()
     model.train()
     stream = tqdm(train_loader)
     for i, (images, labels) in enumerate(stream, start=1):
         images = images.to(device)
-        labels = labels.to(device)        
-        output = model(images)
-        loss = criterion(output, labels)
+        labels = labels.to(device)  
+
+        optimizer.zero_grad()
+        with torch.cuda.amp.autocast():     
+            output = model(images)
+            loss = criterion(output, labels)
+
         acc = calc_acc(output, labels)
         metric_monitor.update("Loss", loss.item())
         metric_monitor.update("Accuracy", acc)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        
+        if scaler:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+        
         stream.set_description(
             "Epoch: {}. Train.      {}".format(epoch, metric_monitor)
         )
-
 
 
 def validate(val_loader, model, criterion, epoch, device):
@@ -84,11 +92,12 @@ def validate(val_loader, model, criterion, epoch, device):
     with torch.no_grad():
         for i, (images, labels) in enumerate(stream, start=1):
             images = images.to(device)
-            labels = labels.to(device)        
-            output = model(images)
-            loss = criterion(output, labels)
-            acc = calc_acc(output, labels)
+            labels = labels.to(device)       
+            with torch.cuda.amp.autocast(enabled=True):  
+                output = model(images)
+                loss = criterion(output, labels)
 
+            acc = calc_acc(output, labels)
             metric_monitor.update("Loss", loss.item())
             metric_monitor.update("Accuracy", acc)
             stream.set_description(
@@ -96,7 +105,7 @@ def validate(val_loader, model, criterion, epoch, device):
             )
 
 
-def load_config(self, path):
+def load_config(path):
     with open(path, 'r') as stream:
         try:
             cfg = yaml.safe_load(stream)
@@ -147,8 +156,8 @@ def main():
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
-
     )
+
     test_transform = A.Compose(
         [
             A.Resize(model_params.img_size,model_params.img_size),
@@ -158,7 +167,6 @@ def main():
     )
 
     dataset = ImageNet(train_imgs_root, "", label_file, True, train_transform)
-
     indices = np.arange(len(dataset))
     train_indices, val_indices = train_test_split(indices, test_size=0.15, random_state=42)
 
@@ -190,9 +198,14 @@ def main():
                                                 step_size=cfg['scheduler_step_size'], 
                                                 gamma=cfg['scheduler_gamma'])
 
+    if torch.cuda.is_available():
+        scaler = torch.cuda.amp.GradScaler(enabled=True)
+    else:
+        scaler = None 
+
     for epoch in range(1, (cfg['epochs']+1)):
 
-        train(train_dataloader, net, criterion, optimizer, epoch, device)
+        train(train_dataloader, net, criterion, optimizer, epoch, device, scaler)
         validate(val_dataloader, net, criterion, epoch, device)
         scheduler.step()
         
