@@ -5,7 +5,7 @@ import numpy as np
 from functools import reduce
 from operator import __add__
 
-from efficientnet.utils import ModelParams
+from utils import ModelParams, get_n_params
 
 class Conv2dSamePadding(nn.Conv2d):
     "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"
@@ -17,18 +17,21 @@ class Conv2dSamePadding(nn.Conv2d):
     def forward(self, input):
         return  self._conv_forward(self.zero_pad_2d(input), self.weight, self.bias)
 
+"""
+First try SE Block based on Paper:
 
 class SEBlock(nn.Module):
-    """Paper: https://arxiv.org/pdf/1709.01507.pdf"""
-    def __init__(self, in_channels, reduction_ratio):
+    #Paper: https://arxiv.org/pdf/1709.01507.pdf
+    def __init__(self, block_in_channels, out_channels, reduction_ratio):
         super().__init__()
-        self.channels = in_channels
+        self.block_in_channels = block_in_channels
+        self.se_channels = out_channels
         self.r = reduction_ratio
         assert self.r > 0
-        self.squeeze = int(self.channels / self.r)
-        self.se = nn.Sequential(nn.Linear(self.channels, self.squeeze),
-                                nn.ReLU(),
-                                nn.Linear(self.squeeze, self.channels),
+        self.squeeze = int(self.r * self.block_in_channels)
+        self.se = nn.Sequential(nn.Linear(self.se_channels, self.squeeze),
+                                nn.SiLU(),
+                                nn.Linear(self.squeeze, self.se_channels),
                                 nn.Sigmoid())
 
     def forward(self, x):
@@ -37,51 +40,87 @@ class SEBlock(nn.Module):
         # channel-wise multiplication
         x_ = x_.unsqueeze(-1).unsqueeze(-1)
         x = torch.mul(x,x_)
+        return x"""
+
+
+class SEBlock(nn.Module):
+    #Paper: https://arxiv.org/pdf/1709.01507.pdf
+    def __init__(self, block_in_channels, out_channels, reduction_ratio):
+        super().__init__()
+        self.block_in_channels = block_in_channels
+        self.se_channels = out_channels
+        self.r = reduction_ratio
+        assert self.r > 0
+        self.squeeze = int(self.block_in_channels * self.r)
+        self.se = nn.Sequential(nn.Conv2d(self.se_channels, self.squeeze, kernel_size=1, bias=False),
+                                nn.SiLU(),
+                                nn.Conv2d(self.squeeze, self.se_channels, kernel_size=1, bias=False))
+
+    def forward(self, x):
+        x_se = torch.nn.functional.adaptive_avg_pool2d(x,1)        
+        x_se = self.se(x_se)
+        x = torch.sigmoid(x_se) * x
         return x
 
 
 class MBConv(nn.Module):
     """Paper: https://arxiv.org/pdf/1801.04381.pdf"""
-    def __init__(self, in_channels, out_channels, filter_size, expand_ratio, stride, se_ratio, padding=1):
+    def __init__(self, in_channels, out_channels, filter_size, expand_ratio, stride, se_ratio, bn_eps, bn_mom, padding=1):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.k = filter_size
-        self.t = expand_ratio
-        self.s = stride
+        self.filter_size = filter_size
+        self.expand_ratio = expand_ratio
+        self.stride = stride
         self.se_ratio = se_ratio
         self.padding = padding
-        middle_dim = self.in_channels * self.t
-
-        # MBConv1
-        if self.t == 1:
-            self.conv = nn.Sequential(nn.Conv2d(middle_dim, middle_dim, self.k, self.s, self.padding, groups=middle_dim, bias=False),
-                                      nn.BatchNorm2d(middle_dim),
-                                      nn.SiLU(inplace=True),
-                                      #Conv2dSamePadding(middle_dim, self.out_channels, 1, bias=False),
-                                      nn.Conv2d(middle_dim, self.out_channels, 1, bias=False),
-                                      nn.BatchNorm2d(self.out_channels))
-        # MBConv6
-        else:
-            self.conv = nn.Sequential(nn.Conv2d(self.in_channels, middle_dim, 1, bias=False),
-                                      nn.BatchNorm2d(middle_dim),
-                                      nn.SiLU(inplace=True),
-                                      Conv2dSamePadding(middle_dim, middle_dim, self.k, self.s, groups=middle_dim, bias=False),
-                                      #nn.Conv2d(middle_dim, middle_dim, self.k, self.s, padding, groups=middle_dim, bias=False),
-                                      nn.BatchNorm2d(middle_dim),
-                                      nn.SiLU(inplace=True),
-                                      nn.Conv2d(middle_dim, self.out_channels, 1, bias=False),
-                                      nn.BatchNorm2d(self.out_channels))
-
-        self.se = SEBlock(self.out_channels, self.se_ratio)
+        self.expand_channels = self.in_channels * self.expand_ratio
 
 
+        # Expansion 
+        if self.expand_ratio != 1:
+            self.expand = Conv2dSamePadding(in_channels=self.in_channels, out_channels=self.expand_channels, kernel_size=1, bias=False)
+            self.bn0 = nn.BatchNorm2d(num_features=self.expand_channels, momentum=bn_mom, eps=bn_eps)
+        
+        # Depthwise Convolution 
+        self.d_conv = Conv2dSamePadding(in_channels=self.expand_channels, 
+                                out_channels=self.expand_channels, 
+                                groups=self.expand_channels, 
+                                kernel_size=self.filter_size, 
+                                stride=self.stride, 
+                                bias=False)
+        self.bn1 = nn.BatchNorm2d(num_features=self.expand_channels, momentum=bn_mom, eps=bn_eps)
+
+        # Squeeze and Excitation 
+        if self.se_ratio:
+            self.se = SEBlock(self.in_channels, self.expand_channels, se_ratio)
+
+        # Pointwise (1x1) Convolution
+        self.p_conv = Conv2dSamePadding(in_channels=self.expand_channels, out_channels=self.out_channels, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(num_features=self.out_channels, momentum=bn_mom, eps=bn_eps)
+        self.swish = nn.SiLU()
+    
     def forward(self, x):
-        if self.s == 1 and self.in_channels == self.out_channels:
-            x_ = self.se(self.conv(x))
-            return x + x_
-        else:
-            return self.se(self.conv(x))
+
+        if self.expand_ratio != 1:
+            x = self.expand(x)
+            x = self.bn0(x)
+            x = self.swish(x)
+        
+        x = self.d_conv(x)
+        x = self.bn1(x)
+        x = self.swish(x)
+
+        if self.se_ratio:
+            x = self.se(x)
+        
+        x = self.p_conv(x)
+        x = self.bn2(x)
+
+        # TODO 
+        # implement skip connection and drop connect
+        
+        return x
 
 
 
@@ -92,16 +131,19 @@ class EfficientNet(nn.Module):
         self.num_classes = self.params.num_classes
         self.dropout = self.params.dropout
         self.in_channels = 3
-        self.out_channels = 1280
+        self.out_channels = int(1280 * self.params.width_coef)
         self.stages_config = self.params.stages
+        # Batch norm parameters
+        self.bn_mom = 1 - 0.99
+        self.bn_eps = 1e-3
 
-        self.stage1 = nn.Sequential(Conv2dSamePadding(self.in_channels, self.stages_config[0][3], 3, stride=2),
-                                    nn.BatchNorm2d(self.stages_config[0][3]),
+        self.stage1 = nn.Sequential(Conv2dSamePadding(self.in_channels, self.stages_config[0][3], 3, stride=2, bias=False),
+                                    nn.BatchNorm2d(self.stages_config[0][3], eps=self.bn_eps, momentum=self.bn_mom),
                                     nn.SiLU(inplace=True))
         self.modules = [self._create_stage(params) for params in self.stages_config]
         self.stages = nn.Sequential(*self.modules)
-        self.final = nn.Sequential(Conv2dSamePadding(self.stages_config[-1][4], self.out_channels, 1),
-                                   nn.BatchNorm2d(self.out_channels),
+        self.final = nn.Sequential(Conv2dSamePadding(self.stages_config[-1][4], self.out_channels, 1, bias=False),
+                                   nn.BatchNorm2d(self.out_channels, eps=self.bn_eps, momentum=self.bn_mom),
                                    nn.AdaptiveAvgPool2d(1),
                                    nn.Flatten(),
                                    nn.Dropout(self.dropout),
@@ -117,22 +159,76 @@ class EfficientNet(nn.Module):
     def _create_stage(self, params):
         expand_ratio, filter_size, num_repeats, in_channels, out_channels, stride, padding, se_ratio = params
         modules = []
-        for i in range(num_repeats):
-            if i == (num_repeats-1):
-                modules.append(MBConv(in_channels, out_channels, filter_size, expand_ratio, stride, se_ratio, 1))
-            else:
-                modules.append(MBConv(in_channels, in_channels, filter_size, expand_ratio, 1, se_ratio, padding))
+        modules.append(MBConv(in_channels, out_channels, filter_size, expand_ratio, stride, se_ratio, 1, self.bn_eps, self.bn_mom))
+        in_channels = out_channels
+        if num_repeats > 1:
+            for i in range(1, num_repeats):
+                modules.append(MBConv(in_channels, out_channels, filter_size, expand_ratio, 1, se_ratio, 1, self.bn_eps, self.bn_mom))
 
         return nn.Sequential(*modules)
 
 
-def main():    
-    params = ModelParams('efficientnet-b7')
-    model = EfficientNet(params)
+def main():
+    # Test all EfficientNet configs
+    effnet_versions = [
+        'efficientnet-b0', 
+        'efficientnet-b1',
+        'efficientnet-b2',
+        'efficientnet-b3',
+        'efficientnet-b4',
+        'efficientnet-b5',
+        'efficientnet-b6',
+        'efficientnet-b7',
+    ] 
+    
+    for net in effnet_versions:
+        print("Test: {}".format(net))
+        params = ModelParams(net)
+        model = EfficientNet(params)
 
-    test_tensor = torch.randn(1,3,600,600)
-    out = model(test_tensor)
-    print(out.size())
+        test_tensor = torch.randn(1,3,params.img_size,params.img_size)
+        print("Input size: {}".format(test_tensor.size()))
+        out = model(test_tensor)
+        print("Output size: {}".format(out.size()))
+        num_params = get_n_params(model)
+        print("Number of parameters: {}".format(num_params))
+        print("--"*20)
+        del model 
+
+    """    for net in effnet_versions:
+        model = EffNet.from_name(net)
+        #print("BLOCK ARGS")
+        #for el in model._blocks_args:
+            #print(el)
+        print("--"*20)
+        print(net)
+        print("--"*20)
+        print("ConvNet out channels: {}".format(model._conv_head.out_channels))
+        num_params = get_n_params(model)
+        print("Original number of parameters: {}".format(num_params))
+        print("Number of MBConv blocks: {}".format(len(model._blocks)))
+        
+        print("--"*20)
+
+        params = ModelParams(net)
+        model = EfficientNet(params)
+        #print(params.stages)
+        print("my model out channels: {}".format(model.out_channels))
+        num_params = get_n_params(model)
+        print("Number of parameters: {}".format(num_params))
+        num_stages = sum([stage[2] for stage in model.stages_config])
+        print("my number of blocks: {}".format(num_stages))
+    print("#"*200)
+
+    params = ModelParams(effnet_versions[1])
+    my_model = EfficientNet(params)
+    print(my_model)
+    for el in params.stages:
+        print(el)
+    
+    num_params = get_n_params(my_model)
+    print("Number of parameters: {}".format(num_params))"""
+    
 
 
 if __name__ == '__main__':
