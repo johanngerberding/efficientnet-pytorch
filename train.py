@@ -1,6 +1,7 @@
 import os
 import torch 
 import yaml 
+import argparse
 import numpy as np
 import torch.nn as nn 
 from collections import defaultdict
@@ -11,8 +12,7 @@ from torch.utils.data import Subset, DataLoader
 from sklearn.model_selection import train_test_split
 
 from efficientnet.model import EfficientNet
-from efficientnet.utils import get_n_params, get_config, ModelParams
-from dataset.cifar import CIFAR10
+from efficientnet.utils import get_config, ModelParams
 from dataset.imagenet import ImageNet
 
 import albumentations as A 
@@ -96,17 +96,27 @@ def validate(val_loader, model, criterion, epoch, device):
             )
 
 
-
-def main():
-    # training parameters
-    with open("config.yaml", 'r') as stream:
+def load_config(self, path):
+    with open(path, 'r') as stream:
         try:
             cfg = yaml.safe_load(stream)
         except yaml.YAMLError as exc:
             print(exc)
+    return cfg
 
-    print(cfg)
 
+class Trainer:
+    NotImplementedError
+
+
+def main():
+
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument('--name', type=str, help="name of the efficientnet model, e.g. 'efficientnet-b0'", required=True)
+    parser.add_argument('--config', type=str, help="path to config yaml", default="config.yaml")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
     now = datetime.now()
     now_str = now.strftime("%d_%m_%y")
     
@@ -116,18 +126,13 @@ def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print("Device: {}".format(device))
 
-    model_params = ModelParams(cfg['model_name'], 
+    model_params = ModelParams(args.name, 
                                num_classes=cfg['num_classes'])
 
     net = EfficientNet(model_params)
     net.to(device)
 
-    #cifar10_root = "/home/johann/dev/efficientnet-pytorch/data/cifar10"
-    #meta_path = '/home/johann/dev/efficientnet-pytorch/data/cifar10/cifar-10-batches-py/batches.meta'
-    #train_imgs_pkl = os.path.join(cifar10_root, 'train/train_imgs.pkl')
-    #train_labels_pkl = os.path.join(cifar10_root, 'train/train_labels.pkl')
-
-    root = "/media/johann/data/imagenet"
+    root = cfg['root']
     root_imgs = os.path.join(root, "ILSVRC", "Data", "CLS-LOC")
     train_imgs_root = os.path.join(root_imgs, 'train')
     label_file = os.path.join(root, 'LOC_synset_mapping.txt')
@@ -152,7 +157,6 @@ def main():
         ]
     )
 
-    #dataset = CIFAR10(meta_path, cifar10_root, train_imgs_pkl, train_labels_pkl, True, train_transform)
     dataset = ImageNet(train_imgs_root, "", label_file, True, train_transform)
 
     indices = np.arange(len(dataset))

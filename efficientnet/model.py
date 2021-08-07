@@ -168,7 +168,7 @@ class EfficientNet(nn.Module):
         return nn.Sequential(*modules)
 
 
-def main():
+def test():
     # Test all EfficientNet configs
     effnet_versions = [
         'efficientnet-b0', 
@@ -193,43 +193,7 @@ def main():
         num_params = get_n_params(model)
         print("Number of parameters: {}".format(num_params))
         print("--"*20)
-        del model 
-
-    """    for net in effnet_versions:
-        model = EffNet.from_name(net)
-        #print("BLOCK ARGS")
-        #for el in model._blocks_args:
-            #print(el)
-        print("--"*20)
-        print(net)
-        print("--"*20)
-        print("ConvNet out channels: {}".format(model._conv_head.out_channels))
-        num_params = get_n_params(model)
-        print("Original number of parameters: {}".format(num_params))
-        print("Number of MBConv blocks: {}".format(len(model._blocks)))
-        
-        print("--"*20)
-
-        params = ModelParams(net)
-        model = EfficientNet(params)
-        #print(params.stages)
-        print("my model out channels: {}".format(model.out_channels))
-        num_params = get_n_params(model)
-        print("Number of parameters: {}".format(num_params))
-        num_stages = sum([stage[2] for stage in model.stages_config])
-        print("my number of blocks: {}".format(num_stages))
-    print("#"*200)
-
-    params = ModelParams(effnet_versions[1])
-    my_model = EfficientNet(params)
-    print(my_model)
-    for el in params.stages:
-        print(el)
-    
-    num_params = get_n_params(my_model)
-    print("Number of parameters: {}".format(num_params))"""
-    
 
 
 if __name__ == '__main__':
-    main()
+    test()
