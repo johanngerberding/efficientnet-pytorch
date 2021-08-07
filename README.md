@@ -24,6 +24,8 @@ The Mobile Inverted Bottleneck is nothing fancy but an Inverted Residual Block u
 
 Original Paper: https://arxiv.org/pdf/1709.01507.pdf
 
+<img alt="Efficientnet squeeze excitation block" src="imgs/efficientnet_squeeze_excitation.png" width="50%">
+
 ## Architecture 
 
 The table down below shows the overall architecture of the EfficientNet-B0 baseline network which was obtained by doing a Neural Architecture Search (NAS) that optimizes for both accuracy and FLOPS.
