@@ -2,7 +2,7 @@
 
 Original Paper: https://arxiv.org/pdf/1905.11946.pdf
 
-![Efficientnet model size vs. ImageNet Accuracy](imgs/efficientnet_model_size_vs_imagenet_acc.png)
+<img src="imgs/efficientnet_model_size_vs_imagenet_acc.png" width="60%">
 
 **Work in Progress**
 
