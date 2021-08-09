@@ -56,7 +56,7 @@ def calc_acc(output, labels):
     return acc
 
 
-def train(train_loader, model, criterion, optimizer, epoch, device, scaler):
+def train(train_loader, model, criterion, optimizer, epoch, device, scaler, work_dir, save_interval=1000):
     metric_monitor = MetricMonitor()
     model.train()
     stream = tqdm(train_loader)
@@ -84,6 +84,9 @@ def train(train_loader, model, criterion, optimizer, epoch, device, scaler):
         stream.set_description(
             "Epoch: {}. Train.      {}".format(epoch, metric_monitor)
         )
+
+        if i % save_interval == 0:
+            torch.save(model.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))
 
 
 def validate(val_loader, model, criterion, epoch, device):
@@ -249,10 +252,8 @@ def main():
 
         print("Learning rate: {}".format(optimizer.param_groups[0]['lr']))
 
-        train(train_dataloader, net, criterion, optimizer, epoch, device, scaler)
+        train(train_dataloader, net, criterion, optimizer, epoch, device, scaler, work_dir)
         validate(val_dataloader, net, criterion, epoch, device)
-        
-        
         
         if cfg['save_interval'] != 0 and epoch % cfg['save_interval'] == 0:
             torch.save(net.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))
