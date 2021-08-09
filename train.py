@@ -2,6 +2,7 @@ import os
 import torch 
 import yaml 
 import argparse
+import math 
 import numpy as np
 import torch.nn as nn 
 from collections import defaultdict
@@ -118,6 +119,32 @@ class Trainer:
     NotImplementedError
 
 
+class CosineScheduler:
+    def __init__(self, max_update, base_lr=0.01, final_lr=0, warmup_steps=0,
+                 warmup_begin_lr=0):
+        self.base_lr_orig = base_lr
+        self.max_update = max_update
+        self.final_lr = final_lr
+        self.warmup_steps = warmup_steps
+        self.warmup_begin_lr = warmup_begin_lr
+        self.max_steps = self.max_update - self.warmup_steps
+
+    def get_warmup_lr(self, epoch):
+        increase = (self.base_lr_orig - self.warmup_begin_lr) \
+                       * float(epoch) / float(self.warmup_steps)
+        return self.warmup_begin_lr + (increase/10)
+
+    def __call__(self, epoch):
+        if epoch < self.warmup_steps:
+            return self.get_warmup_lr(epoch)
+        if epoch <= self.max_update:
+            self.base_lr = self.final_lr + (
+                self.base_lr_orig - self.final_lr) * (1 + math.cos(
+                    math.pi *
+                    (epoch - self.warmup_steps) / self.max_steps)) / 2
+        return self.base_lr
+
+
 def main():
 
     parser = argparse.ArgumentParser(description="")
@@ -194,9 +221,15 @@ def main():
     # here I am a bit confused with the paper which say the lr 
     # "decays by 0.97 every 2.4 epochs"
     # I use 0.97 as gamma and step size of 2
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
-                                                step_size=cfg['scheduler_step_size'], 
-                                                gamma=cfg['scheduler_gamma'])
+    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
+                                                #step_size=cfg['scheduler_step_size'], 
+                                                #gamma=cfg['scheduler_gamma'])
+
+    scheduler = CosineScheduler(max_update=1000, 
+                                base_lr=cfg['learning_rate'], 
+                                final_lr=0.0000001, 
+                                warmup_steps=5, 
+                                warmup_begin_lr=0)
 
     if torch.cuda.is_available():
         scaler = torch.cuda.amp.GradScaler(enabled=True)
@@ -205,9 +238,21 @@ def main():
 
     for epoch in range(1, (cfg['epochs']+1)):
 
+        if scheduler:
+            if scheduler.__module__ == torch.optim.lr_scheduler.__name__:
+                # Using PyTorch In-Built scheduler
+                scheduler.step()
+            else:
+                # Using custom defined scheduler
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = scheduler(epoch)
+
+        print("Learning rate: {}".format(optimizer.param_groups[0]['lr']))
+
         train(train_dataloader, net, criterion, optimizer, epoch, device, scaler)
         validate(val_dataloader, net, criterion, epoch, device)
-        scheduler.step()
+        
+        
         
         if cfg['save_interval'] != 0 and epoch % cfg['save_interval'] == 0:
             torch.save(net.state_dict(), os.path.join(work_dir, 'epoch_{}.pth'.format(epoch)))

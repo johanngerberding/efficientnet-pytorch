@@ -6,7 +6,9 @@ Original Paper: https://arxiv.org/pdf/1905.11946.pdf
 
 **Work in Progress**
 
-This is my personal implementation of EfficientNet with Pytorch. I start by implementing the baseline B0 network and go from there. Maybe I also try to build EfficientNetV2 in the long term. To train my own baseline model, I use the ImageNet subset from Kaggle (https://www.kaggle.com/c/imagenet-object-localization-challenge/overview/description).
+This is my personal implementation of EfficientNet with Pytorch. I start by implementing the baseline B0 network and go from there. Maybe I also try to build EfficientNetV2 in the long term. To train my own baseline model, I use the ImageNet subset from Kaggle (https://www.kaggle.com/c/imagenet-object-localization-challenge/overview/description). Due to limited resources, I only train the baseline model and make this available for download.
+
+I recommend using this PyTorch implementation (https://github.com/lukemelas/EfficientNet-PyTorch).
 
 # Basic Building Blocks
 
@@ -36,7 +38,5 @@ From this baseline you can construct all the bigger models based on the scaling 
 
 # TODOs
 
-* custom learning rate scheduler with warmup 
-* Multi-GPU & mixed precision training
 * inference demo notebook, look at some examples
 * some explanation, how does this thing work and what makes it so efficient

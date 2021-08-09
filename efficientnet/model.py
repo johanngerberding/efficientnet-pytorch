@@ -5,7 +5,7 @@ import numpy as np
 from functools import reduce
 from operator import __add__
 
-from utils import ModelParams, get_n_params
+from efficientnet.utils import ModelParams, get_n_params
 
 class Conv2dSamePadding(nn.Conv2d):
     "https://gist.github.com/sumanmichael/4de9dee93f972d47c80c4ade8e149ea6"
@@ -159,11 +159,27 @@ class EfficientNet(nn.Module):
     def _create_stage(self, params):
         expand_ratio, filter_size, num_repeats, in_channels, out_channels, stride, padding, se_ratio = params
         modules = []
-        modules.append(MBConv(in_channels, out_channels, filter_size, expand_ratio, stride, se_ratio, 1, self.bn_eps, self.bn_mom))
+        modules.append(MBConv(in_channels, 
+                              out_channels, 
+                              filter_size, 
+                              expand_ratio, 
+                              stride, 
+                              se_ratio, 
+                              1, 
+                              self.bn_eps, 
+                              self.bn_mom))
         in_channels = out_channels
         if num_repeats > 1:
             for i in range(1, num_repeats):
-                modules.append(MBConv(in_channels, out_channels, filter_size, expand_ratio, 1, se_ratio, 1, self.bn_eps, self.bn_mom))
+                modules.append(MBConv(in_channels, 
+                                      out_channels, 
+                                      filter_size, 
+                                      expand_ratio, 
+                                      1, 
+                                      se_ratio, 
+                                      1, 
+                                      self.bn_eps, 
+                                      self.bn_mom))
 
         return nn.Sequential(*modules)
 
