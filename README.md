@@ -39,4 +39,6 @@ From this baseline you can construct all the bigger models based on the scaling 
 # TODOs
 
 * inference demo notebook, look at some examples
-* some explanation, how does this thing work and what makes it so efficient
+* testing/eval script
+* logging while training (maybe tensorboard)
+* training b0 for 10 epochs (sorry that's the maximum I can afford ;) )

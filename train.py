@@ -135,7 +135,9 @@ class CosineScheduler:
     def get_warmup_lr(self, epoch):
         increase = (self.base_lr_orig - self.warmup_begin_lr) \
                        * float(epoch) / float(self.warmup_steps)
-        return self.warmup_begin_lr + (increase/10)
+        if epoch == 1:
+            return self.warmup_begin_lr + (increase/10)
+        return self.warmup_begin_lr + increase
 
     def __call__(self, epoch):
         if epoch < self.warmup_steps:
@@ -153,14 +155,25 @@ def main():
     parser = argparse.ArgumentParser(description="")
     parser.add_argument('--name', type=str, help="name of the efficientnet model, e.g. 'efficientnet-b0'", required=True)
     parser.add_argument('--config', type=str, help="path to config yaml", default="config.yaml")
+    parser.add_argument('--resume', type=str, help="path to checkpoint file") # this must have the format 'epoch_23.pth' 
+                                                                              # because we need the epoch to resume from for the learning rate scheduler 
+    
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    start_epoch = 1
     now = datetime.now()
     now_str = now.strftime("%d_%m_%y")
+    dir_path = os.path.dirname(os.path.realpath(__file__))
     
     if cfg['work_dir'] == '':
-        work_dir = "experiments/{}".format(now_str)
+        exp_dir = os.path.join(dir_path, 'experiments')
+        if not os.path.isdir(exp_dir):
+            os.makedirs(exp_dir)
+        work_dir = os.path.join(exp_dir, "{}".format(now_str))
+        os.makedirs(work_dir)
+
+    print("Working directory: {}".format(work_dir))
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print("Device: {}".format(device))
@@ -169,6 +182,13 @@ def main():
                                num_classes=cfg['num_classes'])
 
     net = EfficientNet(model_params)
+
+    if args.resume:
+        net.load_state_dict(torch.load(args.resume))
+        _, s_epoch = os.path.split(args.resume)
+        s_epoch = s_epoch.split(".")[0]
+        start_epoch = int(s_epoch.split("_")[1])
+
     net.to(device)
 
     root = cfg['root']
@@ -201,7 +221,9 @@ def main():
     train_indices, val_indices = train_test_split(indices, test_size=0.15, random_state=42)
 
     train_dataset = Subset(dataset, train_indices)
+    print("Train dataset: {} images".format(len(train_dataset)))
     val_dataset = Subset(dataset, val_indices)
+    print("Val dataset: {} images".format(len(val_dataset)))
 
     train_dataloader = DataLoader(train_dataset, 
                                   batch_size=cfg['train_batch_size'], 
@@ -223,11 +245,8 @@ def main():
 
     # here I am a bit confused with the paper which say the lr 
     # "decays by 0.97 every 2.4 epochs"
-    # I use 0.97 as gamma and step size of 2
-    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
-                                                #step_size=cfg['scheduler_step_size'], 
-                                                #gamma=cfg['scheduler_gamma'])
-
+    # I use 0.97 as gamma and step size of 
+    # I use Cosine Scheduler instead
     scheduler = CosineScheduler(max_update=1000, 
                                 base_lr=cfg['learning_rate'], 
                                 final_lr=0.0000001, 
@@ -239,7 +258,7 @@ def main():
     else:
         scaler = None 
 
-    for epoch in range(1, (cfg['epochs']+1)):
+    for epoch in range(start_epoch, (cfg['epochs']+1)):
 
         if scheduler:
             if scheduler.__module__ == torch.optim.lr_scheduler.__name__:

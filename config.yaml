@@ -1,4 +1,4 @@
-root: "/media/johann/data/imagenet"
+root: "/mnt/f8f6d366-83fa-43f6-b15f-aca6ea3edb3c/imagenet"
 num_classes: 1000
 train_batch_size: 64
 val_batch_size: 32
@@ -7,7 +7,7 @@ momentum: 0.9
 decay: 0.9
 weight_decay: 0.00001
 num_workers: 4 
-epochs: 2
+epochs: 10
 resume_from: ""
 work_dir: ""
 save_interval: 1
